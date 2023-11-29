@@ -24,6 +24,9 @@ This will also help eliminate possible chaincode errors due to the unavailabilit
 
 
 ./network.sh down
+
+
+
 ./network.sh up createChannel
 
 
