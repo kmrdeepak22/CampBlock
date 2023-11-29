@@ -8,9 +8,9 @@ CampBlock: a student record management application built on the top of hyperledg
 
 -Integrating a student rating system based on various factors
 
+<---------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
 
-
-to run the chaincode, execute the following commands in the CampBlock/chaincode/go dir using the relative path:
+**to run the chaincode, execute the following commands in the CampBlock/chaincode/go dir using the relative path:**
 
 1. go mod init CampBlock
 2. go mod tidy
@@ -21,14 +21,23 @@ This will also help eliminate possible chaincode errors due to the unavailabilit
 ./network.sh down
 ./network.sh up createChannel
 
-*to deploy the chaincode onto the peers*
+<---------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
+
+
+**to deploy the chaincode onto the peers**
 ./network.sh deployCC -ccn basic -ccp ../student-record-curr/chaincode -ccl go
 
 *set PATH before going further*
 export PATH=${PWD}/../bin:$PATH && export FABRIC_CFG_PATH=$PWD/../config/ && export CORE_PEER_TLS_ENABLED=true && export CORE_PEER_LOCALMSPID="Org1MSP" && export CORE_PEER_TLS_ROOTCERT_FILE=${PWD}/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt && export CORE_PEER_MSPCONFIGPATH=${PWD}/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp && export CORE_PEER_ADDRESS=localhost:7051
 
 
-*use the following commands in the terminal to interact with the ledger*
+
+
+<---------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
+
+
+
+**use the following commands in the terminal to interact with the ledger**
 
 0. InitLedger *(to initialize the ledger)*
 
@@ -83,7 +92,10 @@ peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.exa
 
 
 
-*use the following commands in the terminal for querying the ledger*
+<---------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
+
+
+**use the following commands in the terminal for querying the ledger**
 
 1. GetEnrollment
 
@@ -137,7 +149,15 @@ peer chaincode query -C mychannel -n basic -c '{"Args":["GetResultForSemester", 
 peer chaincode query -C mychannel -n basic -c '{"Args":["GetResultsForAllSemesters", "CS22M037"]}'
 
 
-*use the following commands in the terminal for querying the ledger update logs*
+
+
+<---------------------------------------------------------------------------------------------------------------------------------------------------------------------------->
+
+
+
+
+
+**use the following commands in the terminal for querying the ledger update logs**
 
 1. ledger height
 
