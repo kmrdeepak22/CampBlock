@@ -11,6 +11,11 @@ import (
 
 // AddCoursesToCurrentSemester adds courses to the current semester's enrollment
 func (s *StudentRecordContract) AddCoursesToCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, coursesToAdd []string) error {
+	// Check if the caller is authorized (admin and faculty)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller) {
+		return fmt.Errorf("Unauthorized: courses can only be added upon approval of admin and faculty both")
+	}
 	// Fetch the student's existing enrollment
 	existingEnrollment, err := s.GetEnrollment(ctx, studentID)
 	if err != nil {
@@ -80,6 +85,12 @@ func (s *StudentRecordContract) AddCoursesToCurrentSemester(ctx contractapi.Tran
 
 // DropCoursesFromCurrentSemester allows a student to drop courses from the current semester
 func (s *StudentRecordContract) DropCoursesFromCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, coursesToDrop []string) error {
+	// Check if the caller is authorized (admin and faculty)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller) {
+		return fmt.Errorf("Unauthorized: courses can only be added upon approval of admin and faculty both")
+	}
+	
 	// Fetch the student's existing enrollment
 	existingEnrollment, err := s.GetEnrollment(ctx, studentID)
 	if err != nil {
@@ -144,6 +155,12 @@ func (s *StudentRecordContract) DropCoursesFromCurrentSemester(ctx contractapi.T
 
 // To use this function, you can invoke it using the peer CLI or through your application to add new courses to the list of available courses in your Hyperledger Fabric network.
 func (s *StudentRecordContract) AddCourse(ctx contractapi.TransactionContextInterface, courseID string, courseName string, credits int, departmentID string, facultyID string, description string) error {
+	// Check if the caller is authorized (admin and faculty)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller){
+		return fmt.Errorf("Unauthorized: courses can only be added upon approval of admin and faculty both")
+	}
+	
 	// Check if the course already exists
 	courseKey := fmt.Sprintf("COURSE-%s", courseID)
 	courseJSON, err := ctx.GetStub().GetState(courseKey)
