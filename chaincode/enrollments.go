@@ -67,6 +67,9 @@ func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionCon
 		return err
 	}
 
+	// Update the enrollment mapping
+	enrollmentMapping[studentID] = initialEnrollment
+	
 	// Record the ledger update
 	entry := fmt.Sprintf("Enrolled student %s into %s", studentID, initialSemester)
 	err = s.recordLedgerUpdate(ctx, entry)
@@ -147,5 +150,17 @@ func (s *StudentRecordContract) GetEnrollment(ctx contractapi.TransactionContext
 		return Enrollment{}, err
 	}
 
+	
+
 	return enrollment, nil
+}
+// GetAllEnrollment retrieves all the enrollments so far from the ledger
+func (s *StudentRecordContract) GetAllEnrollments(ctx contractapi.TransactionContextInterface) ([]Enrollment, error) {
+	enrollments := make([]Enrollment, 0)
+
+	for _, enrollment := range enrollmentMapping {
+		enrollments = append(enrollments, enrollment)
+	}
+
+	return enrollments, nil
 }
