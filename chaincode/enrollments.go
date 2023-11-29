@@ -9,6 +9,12 @@ import (
 
 // InitialEnrollment enrolls a new student into the first semester with basic details
 func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionContextInterface, studentID string, name string, programType string, departmentID string) error {
+	// Check if the caller is authorized (admin)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only Admin can create new Enrollment")
+	}
+	
 	// Check if the student already exists
 	_, err := s.GetStudent(ctx, studentID)
 	if err == nil {
@@ -82,6 +88,12 @@ func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionCon
 
 // EnrollStudentIntoNextSemester enrolls a student into the next semester
 func (s *StudentRecordContract) EnrollStudentIntoNextSemester(ctx contractapi.TransactionContextInterface, studentID string) error {
+	// Check if the caller is authorized (admin)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only Admin can enroll student into next semester")
+	}	
+	
 	// Check if the student exists
 	_, err := s.GetStudent(ctx, studentID)
 	if err != nil {
