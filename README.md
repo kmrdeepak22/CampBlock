@@ -14,10 +14,15 @@ CampBlock: a student record management application built on the top of hyperledg
 
 1. go mod init CampBlock
 2. go mod tidy
-Note---> inside *go.mod* file, change the go version from 1.2x.x to 1.2x
+
+**Note---> inside *go.mod* file, change the go version from 1.2x.x to 1.2x**
+
 This will also help eliminate possible chaincode errors due to the unavailability of some libraries.
 
 //now, inside the test-network dir, run the following commands to create a channel
+
+
+
 ./network.sh down
 ./network.sh up createChannel
 
