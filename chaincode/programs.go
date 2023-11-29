@@ -8,6 +8,12 @@ import (
 
 // AddProgram adds a new program to the ledger
 func (s *StudentRecordContract) AddProgram(ctx contractapi.TransactionContextInterface, programName string, maxSemesters int, requiredCredits int, maxCreditPerSemester int) error {
+	// Check if the caller is authorized (admin)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only Admin can add new program")
+	}
+	
 	// Check if the program already exists
 	_, programExists := programs[programName]
 	if programExists {
