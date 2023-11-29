@@ -12,6 +12,12 @@ import (
 
 // AddResultForCurrentSemester allows a faculty member to add results for courses in the current semester
 func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, resultsToAdd []Result) error {
+	// Check if the caller is authorized (faculty)
+	caller := ctx.GetClientIdentity()
+	if !s.isFaculty(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only faculty can add results")
+	}
+	
 	// Check if the caller is authorized (admin or faculty)
 	caller := ctx.GetClientIdentity()
 	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller) {
@@ -70,6 +76,12 @@ func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.Tran
 
 // UpdateGradeForCourse updates the grade for a specific course in the current semester,
 func (s *StudentRecordContract) UpdateGradeForCourse(ctx contractapi.TransactionContextInterface, studentID string, courseID string, newGrade string) error {
+	// Check if the caller is authorized (faculty)
+	caller := ctx.GetClientIdentity()
+	if !s.isFaculty(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only faculty can update results")
+	}	
+	
 	// Get the student's enrollment
 	existingEnrollment, err := s.GetEnrollment(ctx, studentID)
 	if err != nil {
