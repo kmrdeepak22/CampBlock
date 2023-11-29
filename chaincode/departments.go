@@ -10,6 +10,12 @@ import (
 
 // AddDepartment adds a new department to the ledger
 func (s *StudentRecordContract) AddDepartment(ctx contractapi.TransactionContextInterface, departmentID string, departmentName string) error {
+	// Check if the caller is authorized (admin)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only Admin can add new Department")
+	}
+	
 	// Check if the department already exists
 	departmentKey := fmt.Sprintf("DEPARTMENT-%s", departmentID)
 	departmentJSON, err := ctx.GetStub().GetState(departmentKey)
