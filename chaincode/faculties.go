@@ -10,6 +10,12 @@ import (
 
 // AddFaculty adds a new faculty to the ledger
 func (s *StudentRecordContract) AddFaculty(ctx contractapi.TransactionContextInterface, facultyID string, facultyName string, departmentID string) error {
+	// Check if the caller is authorized (admin)
+	caller := ctx.GetClientIdentity()
+	if !s.isAdmin(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only Admin can add new faculty")
+	}	
+	
 	// Check if the faculty already exists
 	facultyKey := fmt.Sprintf("FACULTY-%s", facultyID)
 	facultyJSON, err := ctx.GetStub().GetState(facultyKey)
