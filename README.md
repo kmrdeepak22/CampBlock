@@ -1,5 +1,5 @@
 # CampBlock
-CampBlock: a student record management application built on the top of hyperledger fabric.
+CampBlock is a student record management application built on top of Hyperledger fabric.
 (***Currently in the development stage.***)
 
 -Developing a secure, decentralized network on Hyperledger Fabric for safeguarding student records.
