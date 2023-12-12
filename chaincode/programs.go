@@ -52,11 +52,11 @@ func (s *StudentRecordContract) GetProgram(ctx contractapi.TransactionContextInt
 
 // GetAllPrograms returns a list of all programs
 func (s *StudentRecordContract) GetAllPrograms(ctx contractapi.TransactionContextInterface) ([]Program, error) {
-	programs := make([]Program, 0)
+	allPrograms := make([]Program, 0)
 
 	for _, program := range programs {
-		programs = append(programs, program)
+		allPrograms = append(allPrograms, program)
 	}
 
-	return programs, nil
+	return allPrograms, nil
 }
