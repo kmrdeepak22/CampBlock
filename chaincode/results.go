@@ -17,12 +17,6 @@ func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.Tran
 	if !s.isFaculty(ctx, caller) {
 		return fmt.Errorf("Unauthorized: Only faculty can add results")
 	}
-	
-	// Check if the caller is authorized (admin or faculty)
-	caller := ctx.GetClientIdentity()
-	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller) {
-		return fmt.Errorf("Unauthorized: Only admin or faculty can add results")
-	}
 
 	// Fetch the student's existing enrollment
 	existingEnrollment, err := s.GetEnrollment(ctx, studentID)
@@ -36,26 +30,47 @@ func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.Tran
 		return fmt.Errorf("Current semester not found for student %s", studentID)
 	}
 
-	// Check if results for the same course already exist throughout all semesters till the current semester
+	// Validate and add results for courses in the current semester
+	totalCredits := 0
 	for _, result := range resultsToAdd {
 		courseID := result.CourseID
 
-		// Check if the course already exists in the previous semester results
-		for semester, semesterResults := range existingEnrollment.SemesterResults {
-			for _, previousResult := range semesterResults {
-				if previousResult.CourseID == courseID {
-					return fmt.Errorf("Result for course %s already exists in a previous semester: %s", courseID, semester)
+		// Check if the course is part of any previous semester's courses taken
+		courseFound := false
+		for semester, courses := range existingEnrollment.CoursesTaken {
+			for _, course := range courses {
+				if course == courseID {
+					courseFound = true
+					break
 				}
 			}
-
+			if courseFound {
+				break
+			}
 			if semester == currentSemester {
-				break // Stop checking once we reach the current semester
+				break
 			}
 		}
+
+		if !courseFound {
+			return fmt.Errorf("Course %s is not part of any previous semester's courses taken", courseID)
+		}
+
+		// Add the result to the current semester
+		existingEnrollment.SemesterResults[currentSemester] = append(existingEnrollment.SemesterResults[currentSemester], result)
+
+		// Fetch the credits of the course
+		course, err := s.GetCourse(ctx, courseID)
+		if err != nil {
+			return fmt.Errorf("Error fetching course %s: %s", courseID, err.Error())
+		}
+
+		// Accumulate the credits
+		totalCredits += course.Credits
 	}
 
-	// Add the results to the current semester
-	existingEnrollment.SemesterResults[currentSemester] = append(existingEnrollment.SemesterResults[currentSemester], resultsToAdd...)
+	// Update the creditsCompleted with the total credits accumulated
+	existingEnrollment.CreditsCompleted += totalCredits
 
 	// Update the enrollment in the ledger
 	enrollmentJSON, _ := json.Marshal(existingEnrollment)
