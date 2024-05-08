@@ -7,15 +7,15 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
+type Department struct {
+	DepartmentID   string `json:"departmentID"`
+	DepartmentName string `json:"departmentName"`
+}
+
+var departmentMapping = make(map[string]Department)
 
 // AddDepartment adds a new department to the ledger
 func (s *StudentRecordContract) AddDepartment(ctx contractapi.TransactionContextInterface, departmentID string, departmentName string) error {
-	// Check if the caller is authorized (admin)
-	caller := ctx.GetClientIdentity()
-	if !s.isAdmin(ctx, caller) {
-		return fmt.Errorf("Unauthorized: Only Admin can add new Department")
-	}
-	
 	// Check if the department already exists
 	departmentKey := fmt.Sprintf("DEPARTMENT-%s", departmentID)
 	departmentJSON, err := ctx.GetStub().GetState(departmentKey)
@@ -46,6 +46,36 @@ func (s *StudentRecordContract) AddDepartment(ctx contractapi.TransactionContext
 
 	// Record the ledger update
 	entry := fmt.Sprintf("Added new department: %s", departmentID)
+	err = s.recordLedgerUpdate(ctx, entry)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveDepartment removes a department from the ledger
+func (s *StudentRecordContract) RemoveDepartment(ctx contractapi.TransactionContextInterface, departmentID string) error {
+	// Check if the department exists
+	departmentKey := fmt.Sprintf("DEPARTMENT-%s", departmentID)
+	departmentJSON, err := ctx.GetStub().GetState(departmentKey)
+	if err != nil {
+		return err
+	}
+	if departmentJSON == nil {
+		return fmt.Errorf("Department with ID %s does not exist", departmentID)
+	}
+
+	// Delete the department from the ledger
+	err = ctx.GetStub().DelState(departmentKey)
+	if err != nil {
+		return err
+	}
+
+	delete(departmentMapping, departmentID)
+
+	// Record the ledger update
+	entry := fmt.Sprintf("Removed department: %s", departmentID)
 	err = s.recordLedgerUpdate(ctx, entry)
 	if err != nil {
 		return err

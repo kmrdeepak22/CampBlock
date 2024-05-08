@@ -9,13 +9,25 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
+type Result struct {
+	CourseID string `json:"courseID"`
+	Grade    string `json:"grade"`
+}
+
+var sgpaMapping = make(map[string]map[string]float64)
 
 // AddResultForCurrentSemester allows a faculty member to add results for courses in the current semester
-func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, resultsToAdd []Result) error {
-	// Check if the caller is authorized (faculty)
+func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, resultsToAddjson string) error {
+
+	var resultsToAdd []Result
+	if err := json.Unmarshal([]byte(resultsToAddjson), &resultsToAdd); err != nil {
+		return fmt.Errorf("unmarhsal error")
+	}
+
+	// Check if the caller is authorized (admin or faculty)
 	caller := ctx.GetClientIdentity()
-	if !s.isFaculty(ctx, caller) {
-		return fmt.Errorf("Unauthorized: Only faculty can add results")
+	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller) {
+		return fmt.Errorf("Unauthorized: Only admin or faculty can add results")
 	}
 
 	// Fetch the student's existing enrollment
@@ -28,6 +40,24 @@ func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.Tran
 	currentSemester := existingEnrollment.CurrentSemester
 	if currentSemester == "" {
 		return fmt.Errorf("Current semester not found for student %s", studentID)
+	}
+
+	// Check if results for the same course already exist throughout all semesters till the current semester
+	for _, result := range resultsToAdd {
+		courseID := result.CourseID
+
+		// Check if the course already exists in the previous semester results
+		for semester, semesterResults := range existingEnrollment.SemesterResults {
+			for _, previousResult := range semesterResults {
+				if previousResult.CourseID == courseID {
+					return fmt.Errorf("Result for course %s already exists in a previous semester: %s", courseID, semester)
+				}
+			}
+
+			if semester == currentSemester {
+				break // Stop checking once we reach the current semester
+			}
+		}
 	}
 
 	// Validate and add results for courses in the current semester
@@ -65,13 +95,19 @@ func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.Tran
 			return fmt.Errorf("Error fetching course %s: %s", courseID, err.Error())
 		}
 
-		// Accumulate the credits
-		totalCredits += course.Credits
+		// // Accumulate the credits
+		// totalCredits += course.Credits
+		// Accumulate the credits only if the grade is not "F"
+		if result.Grade != "F" {
+			totalCredits += course.Credits
+		}
 	}
 
 	// Update the creditsCompleted with the total credits accumulated
 	existingEnrollment.CreditsCompleted += totalCredits
 
+	// Update the enrollment mapping
+	enrollmentMapping[studentID] = existingEnrollment
 	// Update the enrollment in the ledger
 	enrollmentJSON, _ := json.Marshal(existingEnrollment)
 	err = ctx.GetStub().PutState(fmt.Sprintf("ENROLLMENT-%s", studentID), enrollmentJSON)
@@ -91,12 +127,6 @@ func (s *StudentRecordContract) AddResultForCurrentSemester(ctx contractapi.Tran
 
 // UpdateGradeForCourse updates the grade for a specific course in the current semester,
 func (s *StudentRecordContract) UpdateGradeForCourse(ctx contractapi.TransactionContextInterface, studentID string, courseID string, newGrade string) error {
-	// Check if the caller is authorized (faculty)
-	caller := ctx.GetClientIdentity()
-	if !s.isFaculty(ctx, caller) {
-		return fmt.Errorf("Unauthorized: Only faculty can update results")
-	}	
-	
 	// Get the student's enrollment
 	existingEnrollment, err := s.GetEnrollment(ctx, studentID)
 	if err != nil {
@@ -141,6 +171,8 @@ func (s *StudentRecordContract) UpdateGradeForCourse(ctx contractapi.Transaction
 		}
 	}
 
+	// Update the enrollment mapping
+	enrollmentMapping[studentID] = existingEnrollment
 	// Update the enrollment in the ledger
 	enrollmentJSON, err := json.Marshal(existingEnrollment)
 	if err != nil {

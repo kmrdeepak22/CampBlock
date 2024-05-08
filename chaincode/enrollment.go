@@ -7,14 +7,25 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
+// Enrollment represents details required during initial enrollment
+type Enrollment struct {
+	StudentID           string              `json:"studentID"`
+	Name                string              `json:"name"`
+	ProgramType         string              `json:"programType"`
+	DepartmentID        string              `json:"department"`
+	CreditsCompleted    int                 `json:"creditsCompleted"`
+	CreditsThisSemester int                 `json:"creditsThisSemester"`
+	CurrentSemester     string              `json:"currentSemester"` // Current semester for the student
+	SemesterResults     map[string][]Result `json:"semesterResults"` // Map of sem to list of Result
+	CoursesTaken        map[string][]string `json:"coursesTaken"`    // Map of semester to list of course IDs
+	Extracurricular     []string            `json:"extracurricular"` // List of extracurricular activity IDs
+	Certificates        []Certificate       `json:"certificates"`    // List of certificates associated with the enrollment
+}
+
+var enrollmentMapping = make(map[string]Enrollment)
+
 // InitialEnrollment enrolls a new student into the first semester with basic details
 func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionContextInterface, studentID string, name string, programType string, departmentID string) error {
-	// Check if the caller is authorized (admin)
-	caller := ctx.GetClientIdentity()
-	if !s.isAdmin(ctx, caller) {
-		return fmt.Errorf("Unauthorized: Only Admin can create new Enrollment")
-	}
-	
 	// Check if the student already exists
 	_, err := s.GetStudent(ctx, studentID)
 	if err == nil {
@@ -28,7 +39,7 @@ func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionCon
 	}
 
 	// Check if the program type is valid
-	program, programExists := programs[programType]
+	program, programExists := programMapping[programType]
 	if !programExists {
 		return fmt.Errorf("Invalid program type: %s", programType)
 	}
@@ -49,22 +60,27 @@ func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionCon
 	if err != nil {
 		return err
 	}
+	// Enroll the student into the first semester with empty courses and results
+	initialSemester := "Semester1"
+	initialEnrollment := Enrollment{
+		StudentID:           studentID,
+		Name:                name,
+		ProgramType:         programType,
+		DepartmentID:        departmentID,
+		CreditsCompleted:    0,
+		CreditsThisSemester: 0,
+		CurrentSemester:     initialSemester,
+		SemesterResults:     make(map[string][]Result),
+		CoursesTaken:        make(map[string][]string),
+		Extracurricular:     []string{}, // Initialize extracurricular activities as an empty list
+		Certificates:        []Certificate{},
+	}
 
 	// Update the student mapping
 	studentMapping[studentID] = student
 
-	// Enroll the student into the first semester with empty courses and results
-	initialSemester := "Semester1"
-	initialEnrollment := Enrollment{
-		StudentID:        studentID,
-		Name:             name,
-		ProgramType:      programType,
-		DepartmentID:     departmentID,
-		CreditsCompleted: 0,
-		CurrentSemester:  initialSemester,
-		SemesterResults:  make(map[string][]Result),
-		CoursesTaken:     make(map[string][]string),
-	}
+	// Update the enrollment mapping
+	enrollmentMapping[studentID] = initialEnrollment
 
 	// Store the initial enrollment in the ledger
 	initialEnrollmentJSON, _ := json.Marshal(initialEnrollment)
@@ -73,9 +89,6 @@ func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionCon
 		return err
 	}
 
-	// Update the enrollment mapping
-	enrollmentMapping[studentID] = initialEnrollment
-	
 	// Record the ledger update
 	entry := fmt.Sprintf("Enrolled student %s into %s", studentID, initialSemester)
 	err = s.recordLedgerUpdate(ctx, entry)
@@ -88,12 +101,6 @@ func (s *StudentRecordContract) InitialEnrollment(ctx contractapi.TransactionCon
 
 // EnrollStudentIntoNextSemester enrolls a student into the next semester
 func (s *StudentRecordContract) EnrollStudentIntoNextSemester(ctx contractapi.TransactionContextInterface, studentID string) error {
-	// Check if the caller is authorized (admin)
-	caller := ctx.GetClientIdentity()
-	if !s.isAdmin(ctx, caller) {
-		return fmt.Errorf("Unauthorized: Only Admin can enroll student into next semester")
-	}	
-	
 	// Check if the student exists
 	_, err := s.GetStudent(ctx, studentID)
 	if err != nil {
@@ -106,7 +113,32 @@ func (s *StudentRecordContract) EnrollStudentIntoNextSemester(ctx contractapi.Tr
 		return err
 	}
 
-	program, _ := programs[existingEnrollment.ProgramType]
+	// Validate if results are present for all courses in the current semester
+	currentSemester := existingEnrollment.CurrentSemester
+	if currentSemester == "" {
+		return fmt.Errorf("Current semester not found for student %s", studentID)
+	}
+
+	// Check if creditsThis semester is at least equal to min credit required per semester
+	minCreditsRequired, _ := s.GetProgramMinCreditsPerSemester(existingEnrollment.ProgramType)
+	if existingEnrollment.CreditsThisSemester < minCreditsRequired {
+		return fmt.Errorf("Credits for this semester are less than the minimum required, Can't enroll in next semester.")
+	}
+	// Check if results are present for all courses in the current semester
+	currentSemesterCourses := existingEnrollment.CoursesTaken[currentSemester]
+	currentSemesterResults := existingEnrollment.SemesterResults[currentSemester]
+
+	if len(currentSemesterCourses) != len(currentSemesterResults) {
+		return fmt.Errorf("Results are missing for courses in current semester for student %s", studentID)
+	}
+
+	// Check if current semester courses list is emptys
+	currentSemesterCourses, ok := existingEnrollment.CoursesTaken[currentSemester]
+	if !ok || len(currentSemesterCourses) == 0 {
+		return fmt.Errorf("current semester courses list is empty for student %s", studentID)
+	}
+
+	program, _ := programMapping[existingEnrollment.ProgramType]
 	// Check if the student has reached the maximum allowed semesters
 	if existingEnrollment.CurrentSemester == fmt.Sprintf("Semester%d", program.MaxSemesters) {
 		return fmt.Errorf("Student %s has reached the maximum allowed semesters", studentID)
@@ -119,15 +151,21 @@ func (s *StudentRecordContract) EnrollStudentIntoNextSemester(ctx contractapi.Tr
 
 	// Create an enrollment for the next semester with empty courses and results
 	nextEnrollment := Enrollment{
-		StudentID:        studentID,
-		Name:             existingEnrollment.Name,
-		ProgramType:      existingEnrollment.ProgramType,
-		DepartmentID:     existingEnrollment.DepartmentID,
-		CreditsCompleted: existingEnrollment.CreditsCompleted,
-		CurrentSemester:  nextSemester,
-		SemesterResults:  existingEnrollment.SemesterResults,
-		CoursesTaken:     existingEnrollment.CoursesTaken,
+		StudentID:           studentID,
+		Name:                existingEnrollment.Name,
+		ProgramType:         existingEnrollment.ProgramType,
+		DepartmentID:        existingEnrollment.DepartmentID,
+		CreditsCompleted:    existingEnrollment.CreditsCompleted,
+		CreditsThisSemester: 0,
+		CurrentSemester:     nextSemester,
+		SemesterResults:     existingEnrollment.SemesterResults,
+		CoursesTaken:        existingEnrollment.CoursesTaken,
+		Extracurricular:     existingEnrollment.Extracurricular, // Retain extracurricular activities from existing enrollment
+		Certificates:        existingEnrollment.Certificates,
 	}
+
+	// Update the enrollment mapping
+	enrollmentMapping[studentID] = nextEnrollment
 
 	// Store the updated enrollment in the ledger
 	nextEnrollmentJSON, _ := json.Marshal(nextEnrollment)
@@ -146,6 +184,16 @@ func (s *StudentRecordContract) EnrollStudentIntoNextSemester(ctx contractapi.Tr
 	return nil
 }
 
+// Helper function to extract the semester number from the semester name
+func extractSemesterNumber(semester string) int {
+	var semesterNumber int
+	_, err := fmt.Sscanf(semester, "Semester%d", &semesterNumber)
+	if err != nil {
+		return 0
+	}
+	return semesterNumber
+}
+
 // GetEnrollment retrieves a student's enrollment by their ID from the ledger
 func (s *StudentRecordContract) GetEnrollment(ctx contractapi.TransactionContextInterface, studentID string) (Enrollment, error) {
 	enrollmentJSON, err := ctx.GetStub().GetState(fmt.Sprintf("ENROLLMENT-%s", studentID))
@@ -162,10 +210,9 @@ func (s *StudentRecordContract) GetEnrollment(ctx contractapi.TransactionContext
 		return Enrollment{}, err
 	}
 
-	
-
 	return enrollment, nil
 }
+
 // GetAllEnrollment retrieves all the enrollments so far from the ledger
 func (s *StudentRecordContract) GetAllEnrollments(ctx contractapi.TransactionContextInterface) ([]Enrollment, error) {
 	enrollments := make([]Enrollment, 0)

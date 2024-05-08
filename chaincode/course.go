@@ -8,14 +8,34 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
+// Course represent all the information related to a course
+type Course struct {
+	CourseID     string `json:"courseID"`
+	CourseName   string `json:"name"`
+	Credits      int    `json:"credits"`
+	DepartmentID string `json:"department"`
+	FacultyID    string `json:"facultyID"`
+	Description  string `json:"description"`
+	AcademicYear int    `json:"academicYear"`
+	Semester     int    `json:"semester"`
+}
+
+var courseMapping = make(map[string]Course)
 
 // AddCoursesToCurrentSemester adds courses to the current semester's enrollment
-func (s *StudentRecordContract) AddCoursesToCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, coursesToAdd []string) error {
+func (s *StudentRecordContract) AddCoursesToCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, coursesToAddjson string) error {
+
+	var coursesToAdd []string
+	if err := json.Unmarshal([]byte(coursesToAddjson), &coursesToAdd); err != nil {
+		return fmt.Errorf("unmarhsal error")
+	}
+
 	// Check if the caller is authorized (admin and faculty)
 	caller := ctx.GetClientIdentity()
 	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller) {
 		return fmt.Errorf("Unauthorized: courses can only be added upon approval of admin and faculty both")
 	}
+
 	// Fetch the student's existing enrollment
 	existingEnrollment, err := s.GetEnrollment(ctx, studentID)
 	if err != nil {
@@ -59,12 +79,17 @@ func (s *StudentRecordContract) AddCoursesToCurrentSemester(ctx contractapi.Tran
 	if err != nil {
 		return err
 	}
-	if existingEnrollment.CreditsCompleted+totalCreditsToAdd > maxCreditsPerSemester {
-		return fmt.Errorf("Total credits (%d) exceed the maximum allowed credits per semester (%d)", existingEnrollment.CreditsCompleted+totalCreditsToAdd, maxCreditsPerSemester)
+	if existingEnrollment.CreditsThisSemester+totalCreditsToAdd > maxCreditsPerSemester {
+		return fmt.Errorf("Total credits (%d) exceed the maximum allowed credits per semester (%d)", existingEnrollment.CreditsThisSemester+totalCreditsToAdd, maxCreditsPerSemester)
 	}
-
 	// Add the courses to the current semester's enrollment
 	existingEnrollment.CoursesTaken[currentSemester] = append(existingEnrollment.CoursesTaken[currentSemester], coursesToAdd...)
+
+	// Update the CreditsThisSemester with the totalCreditsToAdd
+	existingEnrollment.CreditsThisSemester += totalCreditsToAdd
+
+	// Update the enrollment mapping
+	enrollmentMapping[studentID] = existingEnrollment
 
 	// Update the enrollment in the ledger
 	enrollmentJSON, _ := json.Marshal(existingEnrollment)
@@ -84,13 +109,19 @@ func (s *StudentRecordContract) AddCoursesToCurrentSemester(ctx contractapi.Tran
 }
 
 // DropCoursesFromCurrentSemester allows a student to drop courses from the current semester
-func (s *StudentRecordContract) DropCoursesFromCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, coursesToDrop []string) error {
+func (s *StudentRecordContract) DropCoursesFromCurrentSemester(ctx contractapi.TransactionContextInterface, studentID string, coursesToDropjson string) error {
+
+	var coursesToDrop []string
+	if err := json.Unmarshal([]byte(coursesToDropjson), &coursesToDrop); err != nil {
+		return fmt.Errorf("unmarhsal error")
+	}
+
 	// Check if the caller is authorized (admin and faculty)
 	caller := ctx.GetClientIdentity()
 	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller) {
 		return fmt.Errorf("Unauthorized: courses can only be added upon approval of admin and faculty both")
 	}
-	
+
 	// Fetch the student's existing enrollment
 	existingEnrollment, err := s.GetEnrollment(ctx, studentID)
 	if err != nil {
@@ -115,6 +146,18 @@ func (s *StudentRecordContract) DropCoursesFromCurrentSemester(ctx contractapi.T
 		}
 	}
 
+	// Calculate the total credits for the courses to add
+	totalCreditsToDrop := 0
+	for _, courseID := range coursesToDrop {
+		course, err := s.GetCourse(ctx, courseID)
+		if err != nil {
+			return err
+		}
+		totalCreditsToDrop += course.Credits
+	}
+	// Update the CreditsThisSemester with the totalCreditsToAdd
+	existingEnrollment.CreditsThisSemester += totalCreditsToDrop
+
 	// Remove the dropped courses from the current semester's enrollment
 	existingCourses := existingEnrollment.CoursesTaken[currentSemester]
 	remainingCourses := []string{}
@@ -124,6 +167,9 @@ func (s *StudentRecordContract) DropCoursesFromCurrentSemester(ctx contractapi.T
 		}
 	}
 	existingEnrollment.CoursesTaken[currentSemester] = remainingCourses
+
+	// Update the enrollment mapping
+	enrollmentMapping[studentID] = existingEnrollment
 
 	// Update the enrollment in the ledger
 	enrollmentJSON, _ := json.Marshal(existingEnrollment)
@@ -154,13 +200,7 @@ func (s *StudentRecordContract) DropCoursesFromCurrentSemester(ctx contractapi.T
 //     Records the ledger update to keep track of the addition of the course.
 
 // To use this function, you can invoke it using the peer CLI or through your application to add new courses to the list of available courses in your Hyperledger Fabric network.
-func (s *StudentRecordContract) AddCourse(ctx contractapi.TransactionContextInterface, courseID string, courseName string, credits int, departmentID string, facultyID string, description string) error {
-	// Check if the caller is authorized (admin and faculty)
-	caller := ctx.GetClientIdentity()
-	if !s.isAdmin(ctx, caller) && !s.isFaculty(ctx, caller){
-		return fmt.Errorf("Unauthorized: courses can only be added upon approval of admin and faculty both")
-	}
-	
+func (s *StudentRecordContract) AddCourse(ctx contractapi.TransactionContextInterface, courseID string, courseName string, credits int, departmentID string, facultyID string, description string, academicYear int, semester int) error {
 	// Check if the course already exists
 	courseKey := fmt.Sprintf("COURSE-%s", courseID)
 	courseJSON, err := ctx.GetStub().GetState(courseKey)
@@ -177,11 +217,15 @@ func (s *StudentRecordContract) AddCourse(ctx contractapi.TransactionContextInte
 		return fmt.Errorf("Department ID %s is not valid", departmentID)
 	}
 
-	//is faculty available
 	// Check if the facultyID is valid
-	_, facultyExists := facultyMapping[facultyID]
+	faculty, facultyExists := facultyMapping[facultyID]
 	if !facultyExists {
 		return fmt.Errorf("Faculty ID %s is not valid", facultyID)
+	}
+
+	// Check if the faculty's department matches the input departmentID
+	if faculty.DepartmentID != departmentID {
+		return fmt.Errorf("Faculty with ID %s is not associated with department %s", facultyID, departmentID)
 	}
 
 	// Create a new course
@@ -192,6 +236,8 @@ func (s *StudentRecordContract) AddCourse(ctx contractapi.TransactionContextInte
 		DepartmentID: departmentID,
 		FacultyID:    facultyID,
 		Description:  description,
+		AcademicYear: academicYear,
+		Semester:     semester,
 	}
 
 	// Marshal and store the course in the ledger
@@ -208,6 +254,36 @@ func (s *StudentRecordContract) AddCourse(ctx contractapi.TransactionContextInte
 
 	// Record the ledger update
 	entry := fmt.Sprintf("Added new course: %s", courseID)
+	err = s.recordLedgerUpdate(ctx, entry)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveCourse removes a course from the ledger
+func (s *StudentRecordContract) RemoveCourse(ctx contractapi.TransactionContextInterface, courseID string) error {
+	// Check if the course exists
+	courseKey := fmt.Sprintf("COURSE-%s", courseID)
+	courseJSON, err := ctx.GetStub().GetState(courseKey)
+	if err != nil {
+		return err
+	}
+	if courseJSON == nil {
+		return fmt.Errorf("Course with ID %s does not exist", courseID)
+	}
+
+	// Delete the course from the ledger
+	err = ctx.GetStub().DelState(courseKey)
+	if err != nil {
+		return err
+	}
+
+	delete(courseMapping, courseID)
+
+	// Record the ledger update
+	entry := fmt.Sprintf("Removed course: %s", courseID)
 	err = s.recordLedgerUpdate(ctx, entry)
 	if err != nil {
 		return err
@@ -241,6 +317,19 @@ func (s *StudentRecordContract) GetAllCourses(ctx contractapi.TransactionContext
 
 	for _, course := range courseMapping {
 		courses = append(courses, course)
+	}
+
+	return courses, nil
+}
+
+// GetCoursesByDepartment returns a list of courses filtered by department ID
+func (s *StudentRecordContract) GetCoursesByDepartment(ctx contractapi.TransactionContextInterface, departmentID string) ([]Course, error) {
+	courses := make([]Course, 0)
+
+	for _, course := range courseMapping {
+		if course.DepartmentID == departmentID {
+			courses = append(courses, course)
+		}
 	}
 
 	return courses, nil
