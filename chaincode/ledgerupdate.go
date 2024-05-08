@@ -9,6 +9,12 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
+// LedgerUpdate represents a ledger update entry
+type LedgerUpdate struct {
+	Timestamp string `json:"timestamp"`
+	Entry     string `json:"entry"`
+	UpdatedBy string `json:"updatedBy"`
+}
 
 // Define the Indian time zone
 var indianTimeZone *time.Location
